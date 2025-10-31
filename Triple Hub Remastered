@@ -1,0 +1,463 @@
+
+_G.HeadSize = 6
+_G.Disabled = false
+
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local StarterGui = game:GetService("StarterGui")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local HitboxGui = Instance.new("ScreenGui")
+HitboxGui.Name = "HitboxController"
+HitboxGui.Parent = playerGui
+HitboxGui.ResetOnSpawn = false
+
+local Frame = Instance.new("Frame")
+Frame.Size = UDim2.new(0, 300, 0, 160)
+Frame.Position = UDim2.new(0.5, -150, 0.75, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Frame.BackgroundTransparency = 0.2
+Frame.Active = true
+Frame.Draggable = true
+Frame.Parent = HitboxGui
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundTransparency = 1
+Title.Text = "Hitbox Size Controller"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 20
+Title.Parent = Frame
+
+local InputBox = Instance.new("TextBox")
+InputBox.Size = UDim2.new(0, 200, 0, 35)
+InputBox.Position = UDim2.new(0.5, -100, 0, 45)
+InputBox.PlaceholderText = "Enter hitbox size (e.g. 50)"
+InputBox.Text = tostring(_G.HeadSize)
+InputBox.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+InputBox.TextColor3 = Color3.new(1, 1, 1)
+InputBox.Font = Enum.Font.SourceSans
+InputBox.TextSize = 18
+InputBox.ClearTextOnFocus = false
+InputBox.Parent = Frame
+
+local ApplyButton = Instance.new("TextButton")
+ApplyButton.Size = UDim2.new(0, 200, 0, 30)
+ApplyButton.Position = UDim2.new(0.5, -100, 0, 85)
+ApplyButton.Text = "Apply Size"
+ApplyButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+ApplyButton.TextColor3 = Color3.new(1, 1, 1)
+ApplyButton.Font = Enum.Font.SourceSansBold
+ApplyButton.TextSize = 18
+ApplyButton.Parent = Frame
+
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Size = UDim2.new(0, 200, 0, 30)
+ToggleButton.Position = UDim2.new(0.5, -100, 0, 120)
+ToggleButton.Text = "Hitboxes: ON"
+ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
+ToggleButton.TextColor3 = Color3.new(1, 1, 1)
+ToggleButton.Font = Enum.Font.SourceSansBold
+ToggleButton.TextSize = 18
+ToggleButton.Parent = Frame
+
+ApplyButton.MouseButton1Click:Connect(function()
+	local val = tonumber(InputBox.Text)
+	if val and val > 0 then
+		_G.HeadSize = val
+		InputBox.Text = tostring(_G.HeadSize)
+	else
+		InputBox.Text = "Invalid number!"
+		task.wait(1)
+		InputBox.Text = tostring(_G.HeadSize)
+	end
+end)
+
+ToggleButton.MouseButton1Click:Connect(function()
+	_G.Disabled = not _G.Disabled
+	if _G.Disabled then
+		ToggleButton.Text = "Hitboxes: OFF"
+		ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+	else
+		ToggleButton.Text = "Hitboxes: ON"
+		ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
+	end
+end)
+
+RunService.RenderStepped:Connect(function()
+	if not _G.Disabled then
+		for _, v in next, Players:GetPlayers() do
+			if v ~= player and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+				pcall(function()
+					local hrp = v.Character.HumanoidRootPart
+					hrp.Size = Vector3.new(_G.HeadSize, _G.HeadSize, _G.HeadSize)
+					hrp.Transparency = 0.7
+					hrp.BrickColor = BrickColor.new("Really blue")
+					hrp.Material = Enum.Material.Neon
+					hrp.CanCollide = false
+				end)
+			end
+		end
+	end
+end)
+
+
+wait(5)
+
+
+
+local ScreenGui = Instance.new("ScreenGui")
+local main = Instance.new("Frame")
+local title = Instance.new("TextLabel")
+local EmeraldGreatsword = Instance.new("TextButton")
+local BloodDagger = Instance.new("TextButton")
+local close = Instance.new("TextButton")
+local openmain = Instance.new("Frame")
+local open = Instance.new("TextButton")
+
+ScreenGui.Parent = playerGui
+
+ScreenGui.ResetOnSpawn = false
+
+main.Name = "main"
+main.Parent = ScreenGui
+main.BackgroundColor3 = Color3.new(1, 1, 1)
+main.Position = UDim2.new(0.02, 0, 0.64, 0)
+main.Size = UDim2.new(0, 332, 0, 211)
+main.Visible = false
+main.Active = true
+main.Draggable = true
+
+title.Name = "title"
+title.Parent = main
+title.BackgroundColor3 = Color3.new(1, 1, 1)
+title.Size = UDim2.new(0, 332, 0, 31)
+title.Font = Enum.Font.GothamBold
+title.Text = "meow's free pass! (remastered)"
+title.TextColor3 = Color3.new(0, 0, 0)
+title.TextSize = 17
+
+local function selectWeapon(name)
+	local menu = playerGui:FindFirstChild("Menu Screen")
+	if menu and menu:FindFirstChild("RemoteEvent") then
+		menu.RemoteEvent:FireServer(name)
+		menu:Destroy()
+	end
+end
+
+BloodDagger.Name = "BloodDagger"
+BloodDagger.Parent = main
+BloodDagger.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+BloodDagger.Position = UDim2.new(0.036, 0, 0.379, 0)
+BloodDagger.Size = UDim2.new(0, 110, 0, 50)
+BloodDagger.Font = Enum.Font.GothamBold
+BloodDagger.Text = "BloodDagger"
+BloodDagger.TextColor3 = Color3.new(0, 0, 0)
+BloodDagger.TextScaled = true
+BloodDagger.MouseButton1Down:Connect(function()
+	selectWeapon("Blood Dagger")
+end)
+
+EmeraldGreatsword.Name = "EmeraldGreatsword"
+EmeraldGreatsword.Parent = main
+EmeraldGreatsword.BackgroundColor3 = Color3.fromRGB(0, 128, 128)
+EmeraldGreatsword.Position = UDim2.new(0.614, 0, 0.379, 0)
+EmeraldGreatsword.Size = UDim2.new(0, 110, 0, 50)
+EmeraldGreatsword.Font = Enum.Font.GothamBold
+EmeraldGreatsword.Text = "EmeraldGreatsword"
+EmeraldGreatsword.TextColor3 = Color3.new(0, 0, 0)
+EmeraldGreatsword.TextScaled = true
+EmeraldGreatsword.MouseButton1Down:Connect(function()
+	selectWeapon("Emerald Greatsword")
+end)
+
+close.Name = "close"
+close.Parent = main
+close.BackgroundColor3 = Color3.fromRGB(216, 221, 86)
+close.Position = UDim2.new(0.879, 0, 0, 0)
+close.Size = UDim2.new(0, 40, 0, 31)
+close.Font = Enum.Font.GothamBlack
+close.Text = "meow:3"
+close.TextColor3 = Color3.new(0, 0, 0)
+close.TextScaled = true
+close.MouseButton1Down:Connect(function()
+	main.Visible = false
+	openmain.Visible = true
+end)
+
+openmain.Name = "openmain"
+openmain.Parent = ScreenGui
+openmain.BackgroundColor3 = Color3.new(1, 1, 1)
+openmain.Position = UDim2.new(0.001, 0, 0.79, 0)
+openmain.Size = UDim2.new(0, 100, 0, 28)
+openmain.Active = true
+openmain.Draggable = true
+
+open.Name = "open"
+open.Parent = openmain
+open.BackgroundColor3 = Color3.fromRGB(216, 221, 86)
+open.Size = UDim2.new(0, 100, 0, 28)
+open.Font = Enum.Font.GothamBold
+open.Text = "meow >3<"
+open.TextColor3 = Color3.new(0, 0, 0)
+open.TextSize = 18
+open.MouseButton1Down:Connect(function()
+	openmain.Visible = false
+	main.Visible = true
+end)
+
+
+wait(5)
+
+
+local player = game.Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+
+
+local TOOL_NAME = "Throwing Knife"
+local SIDEWAYS_FORCE = 350
+local UPWARD_FORCE = 50
+local DOUBLE_JUMP_COOLDOWN = 0.2
+
+local isEquipped = false
+local lastJump = 0
+local guiVisible = true
+
+
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ForceAdjuster"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = player:WaitForChild("PlayerGui")
+
+local Frame = Instance.new("Frame")
+Frame.Size = UDim2.new(0, 300, 0, 180)
+Frame.Position = UDim2.new(0, 20, 0.5, -90)
+Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+Frame.BorderSizePixel = 0
+Frame.Active = true
+Frame.Draggable = true
+Frame.Parent = ScreenGui
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundTransparency = 1
+Title.Text = "Meow's launch force controller!"
+Title.TextColor3 = Color3.new(1,1,1)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 16
+Title.Parent = Frame
+
+local function createInput(yPos, labelText, defaultValue, callback)
+	local Label = Instance.new("TextLabel")
+	Label.Size = UDim2.new(0.4, 0, 0, 30)
+	Label.Position = UDim2.new(0, 10, 0, yPos)
+	Label.BackgroundTransparency = 1
+	Label.TextColor3 = Color3.new(1,1,1)
+	Label.Text = labelText
+	Label.Font = Enum.Font.Gotham
+	Label.TextSize = 14
+	Label.Parent = Frame
+
+	local TextBox = Instance.new("TextBox")
+	TextBox.Size = UDim2.new(0.4, 0, 0, 30)
+	TextBox.Position = UDim2.new(0.5, 0, 0, yPos)
+	TextBox.BackgroundColor3 = Color3.fromRGB(60,60,60)
+	TextBox.TextColor3 = Color3.new(1,1,1)
+	TextBox.Font = Enum.Font.Gotham
+	TextBox.TextSize = 14
+	TextBox.Text = tostring(defaultValue)
+	TextBox.ClearTextOnFocus = false
+	TextBox.Parent = Frame
+
+	TextBox.FocusLost:Connect(function()
+		local num = tonumber(TextBox.Text)
+		if num then
+			callback(num)
+		else
+			TextBox.Text = tostring(defaultValue)
+		end
+	end)
+end
+
+_G.SIDEWAYS_FORCE = SIDEWAYS_FORCE
+_G.UPWARD_FORCE = UPWARD_FORCE
+
+createInput(40, "Sideways Force", _G.SIDEWAYS_FORCE, function(v)
+	_G.SIDEWAYS_FORCE = v
+end)
+
+createInput(80, "Upward Force", _G.UPWARD_FORCE, function(v)
+	_G.UPWARD_FORCE = v
+end)
+
+local Info = Instance.new("TextLabel")
+Info.Size = UDim2.new(1, -20, 0, 30)
+Info.Position = UDim2.new(0, 10, 1, -40)
+Info.BackgroundTransparency = 1
+Info.TextColor3 = Color3.fromRGB(180,180,180)
+Info.Text = "Press G to toggle | Drag to move"
+Info.Font = Enum.Font.Gotham
+Info.TextSize = 12
+Info.Parent = Frame
+
+
+
+local function launchUpAndSideways()
+	local char = player.Character
+	if not char then return end
+	local root = char:FindFirstChild("HumanoidRootPart")
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid then return end
+	local camera = workspace.CurrentCamera
+	local rightVec = camera.CFrame.RightVector
+
+	local sideways = _G.SIDEWAYS_FORCE or SIDEWAYS_FORCE
+	local upward = _G.UPWARD_FORCE or UPWARD_FORCE
+
+	root.Velocity = (rightVec * sideways) + Vector3.new(0, upward, 0)
+end
+
+local function handleTool(character)
+	character.ChildAdded:Connect(function(tool)
+		if tool:IsA("Tool") and tool.Name == TOOL_NAME then
+			tool.Equipped:Connect(function()
+				isEquipped = true
+			end)
+			tool.Unequipped:Connect(function()
+				isEquipped = false
+			end)
+		end
+	end)
+end
+
+if player.Character then
+	handleTool(player.Character)
+end
+
+player.CharacterAdded:Connect(handleTool)
+
+
+UserInputService.JumpRequest:Connect(function()
+	if not isEquipped then return end
+	local currentTime = tick()
+	if currentTime - lastJump < DOUBLE_JUMP_COOLDOWN then return end
+	lastJump = currentTime
+
+	launchUpAndSideways()
+end)
+
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then return end
+	if input.KeyCode == Enum.KeyCode.G then
+		guiVisible = not guiVisible
+		Frame.Visible = guiVisible
+	end
+end)
+
+local function isTouchingWall(root)
+	local forward = root.CFrame.LookVector
+	local ray = Ray.new(root.Position, forward * WALL_CHECK_DISTANCE)
+	local part = workspace:FindPartOnRay(ray, player.Character)
+	return (part and part.CanCollide)
+end
+
+local function setupWallSlide(character)
+	local humanoid = character:WaitForChild("Humanoid")
+	local root = character:WaitForChild("HumanoidRootPart")
+	local connection
+	connection = RunService.RenderStepped:Connect(function()
+		if humanoid:GetState() == Enum.HumanoidStateType.Freefall then
+			if isTouchingWall(root) then
+				if not wallSliding then wallSliding = true end
+				local rightVec = root.CFrame.RightVector
+				root.Velocity = rightVec * WALL_SLIDE_SPEED + Vector3.new(0, root.Velocity.Y, 0)
+			else
+				wallSliding = false
+			end
+		else
+			wallSliding = false
+		end
+	end)
+	humanoid.Died:Connect(function()
+		if connection then connection:Disconnect() end
+	end)
+end
+
+local function performDoubleJump()
+	if not canDoubleJump then return end
+	canDoubleJump = false
+	local char = player.Character
+	local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+	humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+	task.wait(0.1)
+	for _, tool in ipairs(player.Backpack:GetChildren()) do
+		if (tool.Name == "C4" or tool.Name == "Grenade") and tool:FindFirstChild("RemoteEvent") then
+			tool.Parent = char
+			task.wait()
+			humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+			task.wait(0.1)
+			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+			if tool.Name == "C4" then
+				tool.RemoteEvent:FireServer(mouse.Hit.LookVector)
+			else
+				tool:Activate()
+			end
+			tool.Parent = player.Backpack
+		end
+	end
+	task.delay(DOUBLE_JUMP_COOLDOWN, function()
+		canDoubleJump = true
+	end)
+end
+
+local function setupInput()
+	if _G.EnhancedInput then _G.EnhancedInput:Disconnect() end
+	_G.EnhancedInput = UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then return end
+		if input.KeyCode == Enum.KeyCode.Space and isEquipped then
+			launchUpAndSideways()
+		elseif input.KeyCode == DOUBLE_JUMP_KEY then
+			performDoubleJump()
+		end
+	end)
+end
+
+local function createMobileButton()
+	if UserInputService.TouchEnabled then
+		local button = Instance.new("TextButton")
+		button.Size = UDim2.new(0, 120, 0, 50)
+		button.Position = UDim2.new(1, -130, 1, -70)
+		button.Text = "Double Jump"
+		button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+		button.TextColor3 = Color3.fromRGB(255, 255, 255)
+		button.Font = Enum.Font.GothamBold
+		button.Parent = playerGui
+		button.MouseButton1Click:Connect(performDoubleJump)
+	end
+end
+
+player.CharacterAdded:Connect(function(character)
+	task.wait(1)
+	isEquipped = false
+	canDoubleJump = true
+	handleTool(character)
+	setupWallSlide(character)
+	setupInput()
+	createMobileButton()
+end)
+
+if player.Character then
+	handleTool(player.Character)
+	setupWallSlide(player.Character)
+	setupInput()
+	createMobileButton()
+end
