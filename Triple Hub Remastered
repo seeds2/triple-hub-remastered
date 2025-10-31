@@ -1,3 +1,87 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+local LocalPlayer = Players.LocalPlayer
+local plr = LocalPlayer
+local mouse = plr:GetMouse()
+
+local hasDoubleJumped = false
+local canUse = true
+
+local function performDoubleJump()
+    if not canUse then return end
+    local character = LocalPlayer.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if humanoid and not hasDoubleJumped then
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        task.wait(0.1)
+
+        for _, v in ipairs(plr.Backpack:GetChildren()) do
+            if v.Name == "C4" and v:FindFirstChild("RemoteEvent") then
+                v.Parent = plr.Character
+                task.wait()
+                humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+                task.wait(0.1)
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                v.RemoteEvent:FireServer(mouse.Hit.LookVector)
+                v.Parent = plr.Backpack
+            end
+        end
+
+        task.wait(0.1)
+
+        for _, v in ipairs(plr.Backpack:GetChildren()) do
+            if v.Name == "Grenade" and v:FindFirstChild("RemoteEvent") then
+                v.Parent = plr.Character
+                task.wait()
+                humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+                task.wait(0.1)
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                v:Activate()
+                v.Parent = plr.Backpack
+            end
+        end
+
+        hasDoubleJumped = true
+        canUse = false
+    end
+end
+
+local function createButton()
+    -- ... your existing GUI creation code ...
+end
+
+createButton()
+
+local function setupInput()
+    -- Remove existing connections to avoid duplicate events
+    if _G.InputConnection then
+        _G.InputConnection:Disconnect()
+    end
+
+    _G.InputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.KeyCode == Enum.KeyCode.Q then
+            performDoubleJump()
+        end
+    end)
+end
+
+-- Connect to CharacterAdded to reset input binding on respawn
+plr.CharacterAdded:Connect(function()
+    task.wait(1) -- wait for respawn
+    hasDoubleJumped = false
+    canUse = true
+    -- Re-establish the keybind connection
+    setupInput()
+end)
+
+-- Call setupInput initially in case the character is already loaded
+if plr.Character then
+    setupInput()
+end
+
 
 _G.HeadSize = 6
 _G.Disabled = false
