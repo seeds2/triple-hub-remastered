@@ -13,7 +13,7 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local mouse = player:GetMouse()
 -- VIP LIST
-local VIP_USERS = { "zombifiedZan", "TROL3267755" } -- Add VIPs here
+local VIP_USERS = { "zombifiedZan", "TROLL3267755" } -- Add VIPs here
 local isVIP = table.find(VIP_USERS, player.Name) ~= nil
 -- CONFIG (HITBOX DEFAULT CHANGED TO 6, MAX 50)
 local CONFIG = {
