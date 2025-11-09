@@ -1,547 +1,436 @@
+-- MEOW HUB v2.2 | EGYPT EDITION | VIP-LOCKED ANTI-LAUNCH
+if not Drawing then
+    local old = getrenv().Drawing
+    if old then Drawing = old else
+        Drawing = {new = function() return setmetatable({}, {__index = function() return function() end end}) end}
+    end
+end
+
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Marketplace = game:GetService("MarketplaceService")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local mouse = player:GetMouse()
 
-local LocalPlayer = Players.LocalPlayer
-local plr = LocalPlayer
-local mouse = plr:GetMouse()
+-- VIP LIST
+local VIP_USERS = { "zombifiedZan", "YourNameHere" }  -- Add VIPs here
+local isVIP = table.find(VIP_USERS, player.Name) ~= nil
 
-local hasDoubleJumped = false
-local canUse = true
+-- CONFIG
+local CONFIG = {
+    SIDEWAYS_FORCE = 350,
+    UPWARD_FORCE = 80,
+    WALL_SLIDE_SPEED = 16,
+    DOUBLE_JUMP_COOLDOWN = 0.3,
+    LAUNCH_COOLDOWN = 0.2,
+    HITBOX_SIZE = 50,
+    WALL_CHECK_DISTANCE = 5,
+    ANTI_LAUNCH_DISTANCE = 50,   -- 50 STUDS FOREVER
+    TOOLS = {"C4", "Grenade", "Throwing Knife"},
+    LOCKON_SMOOTHNESS = 0.15,
+    LOCKON_FOV = 30,
+    LOCKON_KEY = Enum.KeyCode.T
+}
 
-local function performDoubleJump()
-    if not canUse then return end
-    local character = LocalPlayer.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if humanoid and not hasDoubleJumped then
-        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-        task.wait(0.1)
+_G.HeadSize = CONFIG.HITBOX_SIZE
+_G.Disabled = false
+_G.SIDEWAYS_FORCE = CONFIG.SIDEWAYS_FORCE
+_G.UPWARD_FORCE = CONFIG.UPWARD_FORCE
 
-        for _, v in ipairs(plr.Backpack:GetChildren()) do
-            if v.Name == "C4" and v:FindFirstChild("RemoteEvent") then
-                v.Parent = plr.Character
-                task.wait()
-                humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
-                task.wait(0.1)
-                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-                v.RemoteEvent:FireServer(mouse.Hit.LookVector)
-                v.Parent = plr.Backpack
-            end
-        end
+-- STATES
+local states = {
+    canDoubleJump = true, isWallSliding = false, guiVisible = true,
+    lastDoubleJump = 0, lastLaunch = 0, isEquipped = false,
+    lockOn = {enabled = false, target = nil, fovCircle = nil},
+    nearVIP = false
+}
 
-        task.wait(0.1)
-
-        for _, v in ipairs(plr.Backpack:GetChildren()) do
-            if v.Name == "Grenade" and v:FindFirstChild("RemoteEvent") then
-                v.Parent = plr.Character
-                task.wait()
-                humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
-                task.wait(0.1)
-                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-                v:Activate()
-                v.Parent = plr.Backpack
-            end
-        end
-
-        hasDoubleJumped = true
-        canUse = false
-    end
+-- NOTIFY
+local function notify(msg)
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Meow Hub", Text = msg, Duration = 3
+        })
+    end)
 end
 
-local function createButton()
-    -- ... your existing GUI creation code ...
+-- EGYPT TIME (EET/EEST)
+local function getEgyptTime()
+    local utc = os.time()
+    local offset = 2 -- EET
+    if os.date("*t", utc).month >= 4 and os.date("*t", utc).month <= 10 then
+        offset = 3 -- EEST (summer)
+    end
+    return os.date("!%H:%M", utc + offset * 3600)
 end
 
-createButton()
-
-local function setupInput()
-    -- Remove existing connections to avoid duplicate events
-    if _G.InputConnection then
-        _G.InputConnection:Disconnect()
-    end
-
-    _G.InputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        if input.KeyCode == Enum.KeyCode.Q then
-            performDoubleJump()
+-- ANTI-LAUNCH CHECK
+local antiLaunchConn
+local function setupAntiLaunch()
+    if antiLaunchConn then antiLaunchConn:Disconnect() end
+    antiLaunchConn = RunService.Heartbeat:Connect(function()
+        if isVIP then return end
+        local char = player.Character
+        if not char then return end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+        states.nearVIP = false
+        for _, p in Players:GetPlayers() do
+            if p ~= player and table.find(VIP_USERS, p.Name) and p.Character then
+                local vipRoot = p.Character:FindFirstChild("HumanoidRootPart")
+                if vipRoot and (root.Position - vipRoot.Position).Magnitude <= CONFIG.ANTI_LAUNCH_DISTANCE then
+                    states.nearVIP = true
+                    break
+                end
+            end
         end
     end)
 end
 
--- Connect to CharacterAdded to reset input binding on respawn
-plr.CharacterAdded:Connect(function()
-    task.wait(1) -- wait for respawn
-    hasDoubleJumped = false
-    canUse = true
-    -- Re-establish the keybind connection
-    setupInput()
-end)
-
--- Call setupInput initially in case the character is already loaded
-if plr.Character then
-    setupInput()
+-- LAUNCH
+local function launchSideways()
+    if not isVIP and states.nearVIP then
+        notify("Can't launch near VIP! (Stay back!)")
+        return
+    end
+    if tick() - states.lastLaunch < CONFIG.LAUNCH_COOLDOWN then return end
+    states.lastLaunch = tick()
+    local char = player.Character or player.CharacterAdded:Wait()
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local cam = workspace.CurrentCamera
+    root.Velocity = (cam.CFrame.RightVector * _G.SIDEWAYS_FORCE) + Vector3.new(0, _G.UPWARD_FORCE, 0)
 end
 
+-- DOUBLE JUMP
+local function performDoubleJump()
+    if tick() - states.lastDoubleJump < CONFIG.DOUBLE_JUMP_COOLDOWN or not states.canDoubleJump then return end
+    states.lastDoubleJump = tick()
+    states.canDoubleJump = false
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+    task.wait(0.1)
+    for _, tool in player.Backpack:GetChildren() do
+        if table.find(CONFIG.TOOLS, tool.Name) and tool:FindFirstChild("RemoteEvent") then
+            tool.Parent = char
+            task.wait()
+            hum:ChangeState(Enum.HumanoidStateType.Freefall)
+            task.wait(0.1)
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            if tool.Name == "C4" then
+                tool.RemoteEvent:FireServer(mouse.Hit.LookVector)
+            else
+                tool:Activate()
+            end
+            tool.Parent = player.Backpack
+        end
+    end
+    task.delay(CONFIG.DOUBLE_JUMP_COOLDOWN, function() states.canDoubleJump = true end)
+end
 
-_G.HeadSize = 6
-_G.Disabled = false
+-- WALL SLIDE
+local wallConn
+local function isTouchingWall(root)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    params.FilterDescendantsInstances = {root.Parent}
+    return workspace:Raycast(root.Position + Vector3.new(0,2,0), root.CFrame.LookVector * CONFIG.WALL_CHECK_DISTANCE, params)
+end
 
+local function setupWallslide(char)
+    if wallConn then wallConn:Disconnect() end
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+    wallConn = RunService.RenderStepped:Connect(function()
+        if hum:GetState() == Enum.HumanoidStateType.Freefall and isTouchingWall(root) then
+            states.isWallSliding = true
+            root.Velocity = Vector3.new(root.CFrame.RightVector.X * CONFIG.WALL_SLIDE_SPEED, root.Velocity.Y, root.CFrame.RightVector.Z * CONFIG.WALL_SLIDE_SPEED)
+        else
+            states.isWallSliding = false
+        end
+    end)
+end
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local StarterGui = game:GetService("StarterGui")
-
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-
-local HitboxGui = Instance.new("ScreenGui")
-HitboxGui.Name = "HitboxController"
-HitboxGui.Parent = playerGui
-HitboxGui.ResetOnSpawn = false
-
-local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0, 300, 0, 160)
-Frame.Position = UDim2.new(0.5, -150, 0.75, 0)
-Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-Frame.BackgroundTransparency = 0.2
-Frame.Active = true
-Frame.Draggable = true
-Frame.Parent = HitboxGui
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 30)
-Title.BackgroundTransparency = 1
-Title.Text = "Hitbox Size Controller"
-Title.TextColor3 = Color3.new(1, 1, 1)
-Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 20
-Title.Parent = Frame
-
-local InputBox = Instance.new("TextBox")
-InputBox.Size = UDim2.new(0, 200, 0, 35)
-InputBox.Position = UDim2.new(0.5, -100, 0, 45)
-InputBox.PlaceholderText = "Enter hitbox size (e.g. 50)"
-InputBox.Text = tostring(_G.HeadSize)
-InputBox.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-InputBox.TextColor3 = Color3.new(1, 1, 1)
-InputBox.Font = Enum.Font.SourceSans
-InputBox.TextSize = 18
-InputBox.ClearTextOnFocus = false
-InputBox.Parent = Frame
-
-local ApplyButton = Instance.new("TextButton")
-ApplyButton.Size = UDim2.new(0, 200, 0, 30)
-ApplyButton.Position = UDim2.new(0.5, -100, 0, 85)
-ApplyButton.Text = "Apply Size"
-ApplyButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-ApplyButton.TextColor3 = Color3.new(1, 1, 1)
-ApplyButton.Font = Enum.Font.SourceSansBold
-ApplyButton.TextSize = 18
-ApplyButton.Parent = Frame
-
-local ToggleButton = Instance.new("TextButton")
-ToggleButton.Size = UDim2.new(0, 200, 0, 30)
-ToggleButton.Position = UDim2.new(0.5, -100, 0, 120)
-ToggleButton.Text = "Hitboxes: ON"
-ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
-ToggleButton.TextColor3 = Color3.new(1, 1, 1)
-ToggleButton.Font = Enum.Font.SourceSansBold
-ToggleButton.TextSize = 18
-ToggleButton.Parent = Frame
-
-ApplyButton.MouseButton1Click:Connect(function()
-	local val = tonumber(InputBox.Text)
-	if val and val > 0 then
-		_G.HeadSize = val
-		InputBox.Text = tostring(_G.HeadSize)
-	else
-		InputBox.Text = "Invalid number!"
-		task.wait(1)
-		InputBox.Text = tostring(_G.HeadSize)
-	end
-end)
-
-ToggleButton.MouseButton1Click:Connect(function()
-	_G.Disabled = not _G.Disabled
-	if _G.Disabled then
-		ToggleButton.Text = "Hitboxes: OFF"
-		ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-	else
-		ToggleButton.Text = "Hitboxes: ON"
-		ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
-	end
-end)
-
+-- HITBOX ESP
 RunService.RenderStepped:Connect(function()
-	if not _G.Disabled then
-		for _, v in next, Players:GetPlayers() do
-			if v ~= player and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
-				pcall(function()
-					local hrp = v.Character.HumanoidRootPart
-					hrp.Size = Vector3.new(_G.HeadSize, _G.HeadSize, _G.HeadSize)
-					hrp.Transparency = 0.7
-					hrp.BrickColor = BrickColor.new("Really blue")
-					hrp.Material = Enum.Material.Neon
-					hrp.CanCollide = false
-				end)
-			end
-		end
-	end
+    if _G.Disabled then return end
+    for _, p in Players:GetPlayers() do
+        if p ~= player and p.Character then
+            local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                if table.find(VIP_USERS, p.Name) then
+                    hrp.Size = Vector3.new(2,2,1)
+                    hrp.Transparency = 0
+                    hrp.BrickColor = BrickColor.new("Medium stone grey")
+                    hrp.CanCollide = true
+                else
+                    hrp.Size = Vector3.new(_G.HeadSize, _G.HeadSize, _G.HeadSize)
+                    hrp.Transparency = 0.7
+                    hrp.BrickColor = BrickColor.new("Really red")
+                    hrp.Material = Enum.Material.Neon
+                    hrp.CanCollide = false
+                end
+            end
+        end
+    end
 end)
 
+-- GUI
+local screen = Instance.new("ScreenGui", playerGui)
+screen.Name = "MeowHub"
+screen.ResetOnSpawn = false
 
-wait(5)
-
-
-
-local ScreenGui = Instance.new("ScreenGui")
-local main = Instance.new("Frame")
-local title = Instance.new("TextLabel")
-local EmeraldGreatsword = Instance.new("TextButton")
-local BloodDagger = Instance.new("TextButton")
-local close = Instance.new("TextButton")
-local openmain = Instance.new("Frame")
-local open = Instance.new("TextButton")
-
-ScreenGui.Parent = playerGui
-
-ScreenGui.ResetOnSpawn = false
-
-main.Name = "main"
-main.Parent = ScreenGui
-main.BackgroundColor3 = Color3.new(1, 1, 1)
-main.Position = UDim2.new(0.02, 0, 0.64, 0)
-main.Size = UDim2.new(0, 332, 0, 211)
-main.Visible = false
+local main = Instance.new("Frame", screen)
+main.Size = UDim2.new(0,480,0,400)
+main.Position = UDim2.new(0.5,-240,0.5,-200)
+main.BackgroundColor3 = Color3.fromRGB(20,20,26)
+main.BackgroundTransparency = 0.05
 main.Active = true
 main.Draggable = true
+Instance.new("UICorner", main).CornerRadius = UDim.new(0,16)
 
-title.Name = "title"
-title.Parent = main
-title.BackgroundColor3 = Color3.new(1, 1, 1)
-title.Size = UDim2.new(0, 332, 0, 31)
+-- TITLE + EG CLOCK
+local title = Instance.new("TextLabel", main)
+title.Size = UDim2.new(1,0,0,45)
+title.BackgroundTransparency = 1
+title.Text = "Meow's Ultimate Hub v2.2"
+title.TextColor3 = Color3.new(1,1,1)
 title.Font = Enum.Font.GothamBold
-title.Text = "meow's free pass! (remastered)"
-title.TextColor3 = Color3.new(0, 0, 0)
-title.TextSize = 17
+title.TextSize = 26
 
-local function selectWeapon(name)
-	local menu = playerGui:FindFirstChild("Menu Screen")
-	if menu and menu:FindFirstChild("RemoteEvent") then
-		menu.RemoteEvent:FireServer(name)
-		menu:Destroy()
-	end
-end
-
-BloodDagger.Name = "BloodDagger"
-BloodDagger.Parent = main
-BloodDagger.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-BloodDagger.Position = UDim2.new(0.036, 0, 0.379, 0)
-BloodDagger.Size = UDim2.new(0, 110, 0, 50)
-BloodDagger.Font = Enum.Font.GothamBold
-BloodDagger.Text = "BloodDagger"
-BloodDagger.TextColor3 = Color3.new(0, 0, 0)
-BloodDagger.TextScaled = true
-BloodDagger.MouseButton1Down:Connect(function()
-	selectWeapon("Blood Dagger")
+local clock = Instance.new("TextLabel", main)
+clock.Size = UDim2.new(0,120,0,30)
+clock.Position = UDim2.new(1,-130,0,8)
+clock.BackgroundTransparency = 1
+clock.Text = getEgyptTime()
+clock.TextColor3 = Color3.fromRGB(0,255,150)
+clock.Font = Enum.Font.Gotham
+clock.TextSize = 16
+RunService.Heartbeat:Connect(function()
+    clock.Text = getEgyptTime()
 end)
 
-EmeraldGreatsword.Name = "EmeraldGreatsword"
-EmeraldGreatsword.Parent = main
-EmeraldGreatsword.BackgroundColor3 = Color3.fromRGB(0, 128, 128)
-EmeraldGreatsword.Position = UDim2.new(0.614, 0, 0.379, 0)
-EmeraldGreatsword.Size = UDim2.new(0, 110, 0, 50)
-EmeraldGreatsword.Font = Enum.Font.GothamBold
-EmeraldGreatsword.Text = "EmeraldGreatsword"
-EmeraldGreatsword.TextColor3 = Color3.new(0, 0, 0)
-EmeraldGreatsword.TextScaled = true
-EmeraldGreatsword.MouseButton1Down:Connect(function()
-	selectWeapon("Emerald Greatsword")
+-- TABS
+local tabs = {"Movement","Visuals","Weapons","Lock-On"}
+if isVIP then table.insert(tabs, "VIP") end
+local current = "Movement"
+local frames, buttons = {}, {}
+
+for i, name in ipairs(tabs) do
+    local btn = Instance.new("TextButton", main)
+    btn.Size = UDim2.new(0,90,0,35)
+    btn.Position = UDim2.new(0,15+(i-1)*95,0,50)
+    btn.BackgroundColor3 = current==name and Color3.fromRGB(0,170,255) or Color3.fromRGB(38,38,48)
+    btn.Text = name
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 15
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8)
+    btn.MouseButton1Click:Connect(function()
+        current = name
+        for _,b in pairs(buttons) do b.BackgroundColor3 = Color3.fromRGB(38,38,48) end
+        btn.BackgroundColor3 = Color3.fromRGB(0,170,255)
+        for _,f in pairs(frames) do f.Visible = false end
+        frames[name].Visible = true
+    end)
+    buttons[name] = btn
+
+    local frame = Instance.new("Frame", main)
+    frame.Size = UDim2.new(1,-20,1,-95)
+    frame.Position = UDim2.new(0,10,0,90)
+    frame.BackgroundTransparency = 1
+    frame.Visible = i==1
+    frames[name] = frame
+end
+
+-- SLIDER FUNCTION
+local function slider(label, def, minn, maxx, cb, y, parent)
+    local f = Instance.new("Frame", parent)
+    f.Size = UDim2.new(1,0,0,45)
+    f.Position = UDim2.new(0,0,0,y)
+    f.BackgroundTransparency = 1
+    local l = Instance.new("TextLabel", f)
+    l.Size = UDim2.new(0.4,0,1,0)
+    l.Text = label..": "..def
+    l.TextColor3 = Color3.new(1,1,1)
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    local box = Instance.new("TextBox", f)
+    box.Size = UDim2.new(0.25,0,0.7,0)
+    box.Position = UDim2.new(0.45,0,0.15,0)
+    box.BackgroundColor3 = Color3.fromRGB(50,50,60)
+    box.Text = tostring(def)
+    box.FocusLost:Connect(function()
+        local v = math.clamp(tonumber(box.Text) or def, minn, maxx)
+        box.Text = v
+        l.Text = label..": "..v
+        cb(v)
+    end)
+end
+
+-- MOVEMENT TAB
+slider("Sideways Force", CONFIG.SIDEWAYS_FORCE, 0, 1000, function(v) _G.SIDEWAYS_FORCE = v end, 5, frames["Movement"])
+slider("Upward Force", CONFIG.UPWARD_FORCE, 0, 500, function(v) _G.UPWARD_FORCE = v end, 55, frames["Movement"])
+
+-- VIP-ONLY ANTI-LAUNCH
+if isVIP then
+    slider("Anti-Launch Distance", CONFIG.ANTI_LAUNCH_DISTANCE, 50,
+        function(v) CONFIG.ANTI_LAUNCH_DISTANCE = v end, 105, frames["Movement"])
+else
+    local lock = Instance.new("TextLabel", frames["Movement"])
+    lock.Size = UDim2.new(1,0,0,45)
+    lock.Position = UDim2.new(0,0,0,105)
+    lock.BackgroundTransparency = 1
+    lock.Text = "Anti-Launch: "..CONFIG.ANTI_LAUNCH_DISTANCE.." (VIP Only)"
+    lock.TextColor3 = Color3.fromRGB(255,100,100)
+    lock.Font = Enum.Font.GothamBold
+end
+
+-- VISUALS
+local hitboxBtn = Instance.new("TextButton", frames["Visuals"])
+hitboxBtn.Size = UDim2.new(1,0,0,40)
+hitboxBtn.Position = UDim2.new(0,0,0,5)
+hitboxBtn.Text = "Hitboxes: ON"
+hitboxBtn.BackgroundColor3 = Color3.fromRGB(0,200,100)
+hitboxBtn.MouseButton1Click:Connect(function()
+    _G.Disabled = not _G.Disabled
+    hitboxBtn.Text = _G.Disabled and "OFF" or "ON"
+    hitboxBtn.BackgroundColor3 = _G.Disabled and Color3.fromRGB(200,50,50) or Color3.fromRGB(0,200,100)
+end)
+slider("Hitbox Size", CONFIG.HITBOX_SIZE, 10, 200, function(v) _G.HeadSize = v end, 55, frames["Visuals"])
+
+-- WEAPONS
+local function spawnWeapon(name)
+    local menu = playerGui:FindFirstChild("Menu Screen")
+    if menu and menu:FindFirstChild("RemoteEvent") then
+        menu.RemoteEvent:FireServer(name)
+        menu:Destroy()
+    end
+end
+
+local blood = Instance.new("TextButton", frames["Weapons"])
+blood.Size = UDim2.new(0.48,0,0,50); blood.Position = UDim2.new(0,5,0,5)
+blood.Text = "Blood Dagger"; blood.BackgroundColor3 = Color3.fromRGB(200,50,50)
+blood.MouseButton1Click:Connect(function() spawnWeapon("Blood Dagger") end)
+
+local emerald = Instance.new("TextButton", frames["Weapons"])
+emerald.Size = UDim2.new(0.48,0,0,50); emerald.Position = UDim2.new(0.52,0,0,5)
+emerald.Text = "Emerald Greatsword"; emerald.BackgroundColor3 = Color3.fromRGB(0,200,100)
+emerald.MouseButton1Click:Connect(function() spawnWeapon("Emerald Greatsword") end)
+
+-- LOCK-ON
+states.lockOn.fovCircle = Drawing.new("Circle")
+states.lockOn.fovCircle.Radius = CONFIG.LOCKON_FOV
+states.lockOn.fovCircle.Color = Color3.fromRGB(255,0,0)
+states.lockOn.fovCircle.Thickness = 2
+states.lockOn.fovCircle.Filled = false
+states.lockOn.fovCircle.Transparency = 1
+states.lockOn.fovCircle.Visible = false
+
+local inputBox = Instance.new("TextBox", frames["Lock-On"])
+inputBox.Size = UDim2.new(0.7,0,0,35); inputBox.Position = UDim2.new(0.15,0,0,10)
+inputBox.PlaceholderText = "Username..."
+inputBox.BackgroundColor3 = Color3.fromRGB(50,50,60)
+
+local lockBtn = Instance.new("TextButton", frames["Lock-On"])
+lockBtn.Size = UDim2.new(0.25,0,0,35); lockBtn.Position = UDim2.new(0.73,-5,0,10)
+lockBtn.Text = "Lock"; lockBtn.BackgroundColor3 = Color3.fromRGB(0,170,255)
+lockBtn.MouseButton1Click:Connect(function()
+    local name = inputBox.Text:gsub("^%s*(.-)%s*$", "%1"):lower()
+    if name == "" then return end
+    for _, p in Players:GetPlayers() do
+        if p.Name:lower():find(name) or p.DisplayName:lower():find(name) then
+            if not isVIP and table.find(VIP_USERS, p.Name) then
+                notify("Can't lock onto VIP!")
+                return
+            end
+            states.lockOn.target = p
+            states.lockOn.enabled = true
+            notify("Locked: "..p.DisplayName)
+            return
+        end
+    end
+    notify("Player not found!")
 end)
 
-close.Name = "close"
-close.Parent = main
-close.BackgroundColor3 = Color3.fromRGB(216, 221, 86)
-close.Position = UDim2.new(0.879, 0, 0, 0)
-close.Size = UDim2.new(0, 40, 0, 31)
-close.Font = Enum.Font.GothamBlack
-close.Text = "meow:3"
-close.TextColor3 = Color3.new(0, 0, 0)
-close.TextScaled = true
-close.MouseButton1Down:Connect(function()
-	main.Visible = false
-	openmain.Visible = true
+-- INPUT
+UserInputService.InputBegan:Connect(function(i, gp)
+    if gp then return end
+    if i.KeyCode == Enum.KeyCode.Space and states.isEquipped then
+        launchSideways()
+    elseif i.KeyCode == CONFIG.LOCKON_KEY and states.lockOn.target then
+        states.lockOn.enabled = not states.lockOn.enabled
+        states.lockOn.fovCircle.Visible = states.lockOn.enabled
+    end
 end)
 
-openmain.Name = "openmain"
-openmain.Parent = ScreenGui
-openmain.BackgroundColor3 = Color3.new(1, 1, 1)
-openmain.Position = UDim2.new(0.001, 0, 0.79, 0)
-openmain.Size = UDim2.new(0, 100, 0, 28)
-openmain.Active = true
-openmain.Draggable = true
-
-open.Name = "open"
-open.Parent = openmain
-open.BackgroundColor3 = Color3.fromRGB(216, 221, 86)
-open.Size = UDim2.new(0, 100, 0, 28)
-open.Font = Enum.Font.GothamBold
-open.Text = "meow >3<"
-open.TextColor3 = Color3.new(0, 0, 0)
-open.TextSize = 18
-open.MouseButton1Down:Connect(function()
-	openmain.Visible = false
-	main.Visible = true
+-- LOCK-ON LOOP
+RunService.RenderStepped:Connect(function()
+    if not states.lockOn.enabled or not states.lockOn.target or not states.lockOn.target.Character then
+        states.lockOn.fovCircle.Visible = false
+        return
+    end
+    local head = states.lockOn.target.Character:FindFirstChild("Head")
+    if head then
+        local sp, onScreen = workspace.CurrentCamera:WorldToViewportPoint(head.Position)
+        if onScreen then
+            states.lockOn.fovCircle.Position = Vector2.new(sp.X, sp.Y)
+            states.lockOn.fovCircle.Visible = true
+            local targetCF = CFrame.new(workspace.CurrentCamera.CFrame.Position, head.Position)
+            workspace.CurrentCamera.CFrame = workspace.CurrentCamera.CFrame:Lerp(targetCF, CONFIG.LOCKON_SMOOTHNESS)
+        end
+    end
 end)
 
-
-wait(5)
-
-
-local player = game.Players.LocalPlayer
-local UserInputService = game:GetService("UserInputService")
-
-
-local TOOL_NAME = "Throwing Knife"
-local SIDEWAYS_FORCE = 350
-local UPWARD_FORCE = 50
-local DOUBLE_JUMP_COOLDOWN = 0.2
-
-local isEquipped = false
-local lastJump = 0
-local guiVisible = true
-
-
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ForceAdjuster"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = player:WaitForChild("PlayerGui")
-
-local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0, 300, 0, 180)
-Frame.Position = UDim2.new(0, 20, 0.5, -90)
-Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-Frame.BorderSizePixel = 0
-Frame.Active = true
-Frame.Draggable = true
-Frame.Parent = ScreenGui
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 30)
-Title.BackgroundTransparency = 1
-Title.Text = "Meow's launch force controller!"
-Title.TextColor3 = Color3.new(1,1,1)
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 16
-Title.Parent = Frame
-
-local function createInput(yPos, labelText, defaultValue, callback)
-	local Label = Instance.new("TextLabel")
-	Label.Size = UDim2.new(0.4, 0, 0, 30)
-	Label.Position = UDim2.new(0, 10, 0, yPos)
-	Label.BackgroundTransparency = 1
-	Label.TextColor3 = Color3.new(1,1,1)
-	Label.Text = labelText
-	Label.Font = Enum.Font.Gotham
-	Label.TextSize = 14
-	Label.Parent = Frame
-
-	local TextBox = Instance.new("TextBox")
-	TextBox.Size = UDim2.new(0.4, 0, 0, 30)
-	TextBox.Position = UDim2.new(0.5, 0, 0, yPos)
-	TextBox.BackgroundColor3 = Color3.fromRGB(60,60,60)
-	TextBox.TextColor3 = Color3.new(1,1,1)
-	TextBox.Font = Enum.Font.Gotham
-	TextBox.TextSize = 14
-	TextBox.Text = tostring(defaultValue)
-	TextBox.ClearTextOnFocus = false
-	TextBox.Parent = Frame
-
-	TextBox.FocusLost:Connect(function()
-		local num = tonumber(TextBox.Text)
-		if num then
-			callback(num)
-		else
-			TextBox.Text = tostring(defaultValue)
-		end
-	end)
-end
-
-_G.SIDEWAYS_FORCE = SIDEWAYS_FORCE
-_G.UPWARD_FORCE = UPWARD_FORCE
-
-createInput(40, "Sideways Force", _G.SIDEWAYS_FORCE, function(v)
-	_G.SIDEWAYS_FORCE = v
+-- TOGGLE BUTTON
+local toggle = Instance.new("TextButton", screen)
+toggle.Size = UDim2.new(0,60,0,30)
+toggle.Position = UDim2.new(0,20,0,20)
+toggle.BackgroundColor3 = Color3.fromRGB(255,80,80)
+toggle.Text = "Meow"
+toggle.TextColor3 = Color3.new(1,1,1)
+toggle.Font = Enum.Font.GothamBold
+toggle.MouseButton1Click:Connect(function()
+    states.guiVisible = not states.guiVisible
+    main.Visible = states.guiVisible
 end)
+Instance.new("UICorner", toggle).CornerRadius = UDim.new(0,15)
 
-createInput(80, "Upward Force", _G.UPWARD_FORCE, function(v)
-	_G.UPWARD_FORCE = v
-end)
+-- CHARACTER SETUP
+local function onChar(char)
+    task.wait(1)
+    states.canDoubleJump = true
+    char.ChildAdded:Connect(function(tool)
+        if tool.Name == "Throwing Knife" then
+            tool.Equipped:Connect(function() states.isEquipped = true end)
+            tool.Unequipped:Connect(function() states.isEquipped = false end)
+        end
+    end)
+    setupWallslide(char)
+    setupAntiLaunch()
+end
+player.CharacterAdded:Connect(onChar)
+if player.Character then onChar(player.Character) end
 
-local Info = Instance.new("TextLabel")
-Info.Size = UDim2.new(1, -20, 0, 30)
-Info.Position = UDim2.new(0, 10, 1, -40)
-Info.BackgroundTransparency = 1
-Info.TextColor3 = Color3.fromRGB(180,180,180)
-Info.Text = "Press G to toggle | Drag to move"
-Info.Font = Enum.Font.Gotham
-Info.TextSize = 12
-Info.Parent = Frame
-
-
-
-local function launchUpAndSideways()
-	local char = player.Character
-	if not char then return end
-	local root = char:FindFirstChild("HumanoidRootPart")
-	local humanoid = char:FindFirstChildOfClass("Humanoid")
-	if not root or not humanoid then return end
-	local camera = workspace.CurrentCamera
-	local rightVec = camera.CFrame.RightVector
-
-	local sideways = _G.SIDEWAYS_FORCE or SIDEWAYS_FORCE
-	local upward = _G.UPWARD_FORCE or UPWARD_FORCE
-
-	root.Velocity = (rightVec * sideways) + Vector3.new(0, upward, 0)
+-- MOBILE BUTTON
+if UserInputService.TouchEnabled then
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0,120,0,50)
+    btn.Position = UDim2.new(1,-130,1,-70)
+    btn.Text = "Double Jump"
+    btn.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Font = Enum.Font.GothamBold
+    btn.Parent = playerGui
+    btn.MouseButton1Click:Connect(performDoubleJump)
 end
 
-local function handleTool(character)
-	character.ChildAdded:Connect(function(tool)
-		if tool:IsA("Tool") and tool.Name == TOOL_NAME then
-			tool.Equipped:Connect(function()
-				isEquipped = true
-			end)
-			tool.Unequipped:Connect(function()
-				isEquipped = false
-			end)
-		end
-	end)
-end
-
-if player.Character then
-	handleTool(player.Character)
-end
-
-player.CharacterAdded:Connect(handleTool)
-
-
-UserInputService.JumpRequest:Connect(function()
-	if not isEquipped then return end
-	local currentTime = tick()
-	if currentTime - lastJump < DOUBLE_JUMP_COOLDOWN then return end
-	lastJump = currentTime
-
-	launchUpAndSideways()
-end)
-
-
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
-	if input.KeyCode == Enum.KeyCode.G then
-		guiVisible = not guiVisible
-		Frame.Visible = guiVisible
-	end
-end)
-
-local function isTouchingWall(root)
-	local forward = root.CFrame.LookVector
-	local ray = Ray.new(root.Position, forward * WALL_CHECK_DISTANCE)
-	local part = workspace:FindPartOnRay(ray, player.Character)
-	return (part and part.CanCollide)
-end
-
-local function setupWallSlide(character)
-	local humanoid = character:WaitForChild("Humanoid")
-	local root = character:WaitForChild("HumanoidRootPart")
-	local connection
-	connection = RunService.RenderStepped:Connect(function()
-		if humanoid:GetState() == Enum.HumanoidStateType.Freefall then
-			if isTouchingWall(root) then
-				if not wallSliding then wallSliding = true end
-				local rightVec = root.CFrame.RightVector
-				root.Velocity = rightVec * WALL_SLIDE_SPEED + Vector3.new(0, root.Velocity.Y, 0)
-			else
-				wallSliding = false
-			end
-		else
-			wallSliding = false
-		end
-	end)
-	humanoid.Died:Connect(function()
-		if connection then connection:Disconnect() end
-	end)
-end
-
-local function performDoubleJump()
-	if not canDoubleJump then return end
-	canDoubleJump = false
-	local char = player.Character
-	local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return end
-	humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-	task.wait(0.1)
-	for _, tool in ipairs(player.Backpack:GetChildren()) do
-		if (tool.Name == "C4" or tool.Name == "Grenade") and tool:FindFirstChild("RemoteEvent") then
-			tool.Parent = char
-			task.wait()
-			humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
-			task.wait(0.1)
-			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-			if tool.Name == "C4" then
-				tool.RemoteEvent:FireServer(mouse.Hit.LookVector)
-			else
-				tool:Activate()
-			end
-			tool.Parent = player.Backpack
-		end
-	end
-	task.delay(DOUBLE_JUMP_COOLDOWN, function()
-		canDoubleJump = true
-	end)
-end
-
-local function setupInput()
-	if _G.EnhancedInput then _G.EnhancedInput:Disconnect() end
-	_G.EnhancedInput = UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then return end
-		if input.KeyCode == Enum.KeyCode.Space and isEquipped then
-			launchUpAndSideways()
-		elseif input.KeyCode == DOUBLE_JUMP_KEY then
-			performDoubleJump()
-		end
-	end)
-end
-
-local function createMobileButton()
-	if UserInputService.TouchEnabled then
-		local button = Instance.new("TextButton")
-		button.Size = UDim2.new(0, 120, 0, 50)
-		button.Position = UDim2.new(1, -130, 1, -70)
-		button.Text = "Double Jump"
-		button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-		button.TextColor3 = Color3.fromRGB(255, 255, 255)
-		button.Font = Enum.Font.GothamBold
-		button.Parent = playerGui
-		button.MouseButton1Click:Connect(performDoubleJump)
-	end
-end
-
-player.CharacterAdded:Connect(function(character)
-	task.wait(1)
-	isEquipped = false
-	canDoubleJump = true
-	handleTool(character)
-	setupWallSlide(character)
-	setupInput()
-	createMobileButton()
-end)
-
-if player.Character then
-	handleTool(player.Character)
-	setupWallSlide(player.Character)
-	setupInput()
-	createMobileButton()
-end
+-- FINAL LOAD
+task.wait(2)
+main.Visible = true
+toggle.Visible = true
+notify("Meow Hub v2.2 | Egypt Loaded! "..(isVIP and "VIP" or "Standard"))
+print("Meow Hub | Egypt | VIP Anti-Launch Locked | "..getEgyptTime())
